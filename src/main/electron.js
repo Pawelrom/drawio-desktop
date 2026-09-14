@@ -292,6 +292,8 @@ contextMenu({
 const __DEV__ = process.env.DRAWIO_ENV === 'dev'
 		
 let windowsRegistry = []
+let controlPanelWin = null;
+let lastFocusedDrawioWin = null;
 let cmdQPressed = false
 let firstWinLoaded = false
 let firstWinFilePath = null
@@ -1029,6 +1031,13 @@ function createWindow (opt = {})
 	return mainWindow
 }
 
+// Track focused draw.io window (skip control panel itself)
+app.on('browser-window-focus', (event, win) =>
+{
+	if (controlPanelWin && win === controlPanelWin) return;
+	lastFocusedDrawioWin = win;
+});
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -1054,7 +1063,7 @@ app.whenReady().then(() =>
 				// 'wasm-unsafe-eval' is required to compile the inlined libavoid WASM edge
 				// router; without it this header CSP overrides the more permissive meta CSP
 				// set in ElectronApp.js (the strictest of multiple policies wins)
-				'Content-Security-Policy': ['default-src \'self\'; script-src \'self\' \'wasm-unsafe-eval\'; connect-src \'self\'' +
+				'Content-Security-Policy': ['default-src \'self\'; script-src \'self\' \'wasm-unsafe-eval\' \'unsafe-eval\'; connect-src \'self\'' +
 				(isGoogleFontsEnabled? ' https://fonts.googleapis.com https://fonts.gstatic.com' : '') + '; img-src * data:; media-src *; font-src * data:; frame-src \'self\'; style-src \'self\' \'unsafe-inline\'' +
 				(isGoogleFontsEnabled? ' https://fonts.googleapis.com' : '') + '; base-uri \'none\';child-src \'self\';object-src \'none\';']
 			}
@@ -1085,6 +1094,58 @@ app.whenReady().then(() =>
 
 		e.sender.openDevTools();
 	})
+
+	// ext-cmd: panel → main → active draw.io renderer
+	ipcMain.on('ext-cmd', (e, msg) =>
+	{
+		const target = lastFocusedDrawioWin;
+		if (!target || target.isDestroyed()) return;
+
+		if (msg.type === 'export')
+		{
+			// Waliduj folder, dołącz go do msg i prześlij do renderera
+			const folder = msg.payload && msg.payload.folder;
+			if (!folder)
+			{
+				if (controlPanelWin && !controlPanelWin.isDestroyed())
+				{
+					controlPanelWin.webContents.send('ext-result',
+						{type: 'export-error', msg: 'Brak ścieżki folderu'});
+				}
+				return;
+			}
+
+			try
+			{
+				fs.accessSync(folder, fs.constants.W_OK);
+			}
+			catch (err)
+			{
+				if (controlPanelWin && !controlPanelWin.isDestroyed())
+				{
+					controlPanelWin.webContents.send('ext-result',
+						{type: 'export-error', msg: 'Folder nie istnieje lub brak uprawnień'});
+				}
+				return;
+			}
+
+			target.webContents.send('ext-cmd', msg);
+		}
+		else
+		{
+			target.webContents.send('ext-cmd', msg);
+		}
+	});
+
+	// ext-result: renderer → main → panel
+	ipcMain.on('ext-result', (e, msg) =>
+	{
+		if (!msg || msg.type === 'export-data') return; // obsługiwane osobno w Task 5
+		if (controlPanelWin && !controlPanelWin.isDestroyed())
+		{
+			controlPanelWin.webContents.send('ext-result', msg);
+		}
+	});
 
 	ipcMain.on('newfile', (e, arg) =>
 	{
