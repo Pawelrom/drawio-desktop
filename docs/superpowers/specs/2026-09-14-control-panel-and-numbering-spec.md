@@ -9,7 +9,7 @@
 ## Cel
 
 Dodanie:
-1. **Panelu kontrolnego** (BrowserWindow) otwieranego z menu, z kontrolkami dla wszystkich rozszerzeń
+1. **Panelu kontrolnego** (BrowserWindow) otwieranego z menu "Rozszerzenia"
 2. **Extension 3 — Numerowanie elementów** według topologii połączeń (DFS z priorytetem najdłuższej ścieżki)
 3. **Rozszerzenie eksportu** na 7 formatów (PDF, XML, JSON, SVG, PNG, JPEG, HTML) z wyborem przez checkboxy
 
@@ -21,27 +21,27 @@ Dodanie:
 ┌─────────────────────────┐        ┌──────────────────────────────┐
 │  control-panel.html     │        │  draw.io renderer window     │
 │  (BrowserWindow)        │        │                              │
-│                         │  IPC   │  highlight-selection.js      │
-│  panelBridge.sendCmd()──┼──────▶─┼─ ext-cmd handler            │
+│  panelBridge.sendCmd()──┼──IPC──▶┼─ ext-cmd handler            │
 │  panelBridge.onResult() │◀───────┼─ ext-result                 │
-│                         │        │  numbering.js                │
-└─────────────────────────┘        │  export-all.js               │
-           │                       └──────────────────────────────┘
-           │ ipcRenderer
-           ▼
+└─────────────────────────┘        │  highlight-selection.js      │
+           │                       │  numbering.js                │
+           │ ipcRenderer           │  export-all.js               │
+           ▼                       └──────────────────────────────┘
 ┌─────────────────────────┐
 │  electron.js (main)     │
 │  ipcMain.on('ext-cmd')  │
-│  router → mainWindow    │
+│  router → focused win   │
 │  .webContents.send()    │
 └─────────────────────────┘
 ```
 
 **Kanały IPC:**
 - `ext-cmd` — Panel → Main → Renderer (komendy)
-- `ext-result` — Renderer → Main → Panel (odpowiedzi, opcjonalnie)
+- `ext-result` — Renderer → Main → Panel (odpowiedzi)
 
-Każde rozszerzenie w rendererze rejestruje jeden handler na `ext-cmd` i filtruje po `type`. Dodanie nowego rozszerzenia nie wymaga zmian w `electron.js`.
+Każde rozszerzenie rejestruje jeden handler na `ext-cmd` i filtruje po `type`. Dodanie nowego rozszerzenia nie wymaga zmian w `electron.js`.
+
+**Aktywne okno:** panel kontroluje **ostatnio aktywne** okno draw.io (`BrowserWindow.getFocusedWindow()` lub śledzone przez `focus` event). Panel zamyka się razem z ostatnim oknem draw.io.
 
 ---
 
@@ -62,53 +62,91 @@ Każde rozszerzenie w rendererze rejestruje jeden handler na `ext-cmd` i filtruj
 ## Panel kontrolny (BrowserWindow)
 
 ### Okno
-- Rozmiar: 280×360px, `resizable: false`
+- Rozmiar: 280×420px, `resizable: false`
 - Tytuł: `"Panel rozszerzeń"`
 - Singleton: jeśli okno już istnieje → `focus()`, nie tworzy nowego
 - `alwaysOnTop: false`
-- Menu entry: nowe menu **"Rozszerzenia"** → pozycja **"Panel rozszerzeń"**
-- Działa na Windows i macOS (menu "Rozszerzenia" przed "Help")
+- Zamyka się razem z ostatnim oknem draw.io
+- **Menu entry:** nowe menu **"Rozszerzenia"** (przed "Help") → **"Panel rozszerzeń"**
 
 ### UI layout
+
 ```
-┌──────────────────────────────┐
-│  Panel rozszerzeń            │
-├──────────────────────────────┤
-│  Podświetlenie zaznaczenia   │
-│  [●  Włączone          ]     │
-├──────────────────────────────┤
-│  Numerowanie elementów       │
-│  [ Numeruj ]                 │
-├──────────────────────────────┤
-│  Eksportuj...                │
-│  ☑ PDF    ☑ XML    ☑ JSON   │
-│  ☑ SVG    ☑ PNG    ☑ JPEG  │
-│  ☑ HTML                     │
-│                              │
-│  [ Eksportuj ]               │
-└──────────────────────────────┘
+┌──────────────────────────────────┐
+│  Panel rozszerzeń                │
+├──────────────────────────────────┤
+│  Podświetlenie zaznaczenia       │
+│  [●  Włączone              ]     │  ← toggle
+├──────────────────────────────────┤
+│  Numerowanie elementów           │
+│  [ Numeruj ]                     │
+│  "Numerowanie: strona 2/4..."    │  ← status (znika po 3s lub stały podczas operacji)
+├──────────────────────────────────┤
+│  Eksportuj...                    │
+│  Folder: [C:\exports\___] [...]  │  ← edytowalne pole + Przeglądaj
+│                                  │
+│  ☑ PDF    ☑ XML    ☑ JSON       │
+│  ☑ SVG    ☑ PNG    ☑ JPEG      │
+│  ☑ HTML                         │
+│                                  │
+│  ☑ Wszystkie strony              │
+│    Obrazki: ◉ per strona         │  ← radio, widoczne gdy "Wszystkie strony" ON
+│             ○ tylko bieżąca      │
+│                                  │
+│  [ Eksportuj ]                   │
+│  "Wyeksportowano: XML, JSON..."  │  ← status (znika po 3s)
+└──────────────────────────────────┘
 ```
 
 ### Implementacja
 - Czysty HTML/CSS/JS, bez frameworka
-- Stan checkboxów i toggle persystowany w `localStorage` panelu
-- Styl: dopasowany do draw.io Desktop (czcionka systemowa, szare tło)
+- **localStorage panelu** — persystuje: stan toggle highlight, ścieżka folderu, zaznaczone formaty, checkbox "Wszystkie strony", radio obrazków
+- Styl: czcionka systemowa, szare tło, dopasowane do draw.io Desktop
+
+### Zachowanie przycisków i walidacja
+
+| Sytuacja | Zachowanie |
+|----------|-----------|
+| Folder pusty + klik "Eksportuj" | Status: "Wybierz folder eksportu" (nie eksportuje) |
+| Ścieżka wpisana ręcznie nie istnieje | Status: "Folder nie istnieje" (przy kliknięciu Eksportuj) |
+| Klik "Eksportuj" podczas eksportu | Przycisk zablokowany, tekst "Eksportowanie..." |
+| Eksport zakończony sukcesem | Status: "Wyeksportowano do: {ścieżka}" — znika po 3s |
+| Eksport częściowy (niektóre formaty nie udały się) | "Wyeksportowano: XML, JSON. Błąd: PNG" — znika po 3s |
+| Klik "Przeglądaj" | Folder picker dialog, wynik wpisany do pola |
 
 ### `control-panel-preload.js`
 Eksponuje `window.panelBridge` przez `contextBridge`:
 ```javascript
-panelBridge.sendCmd(type, payload)   // ipcRenderer.send('ext-cmd', {type, payload})
-panelBridge.onResult(type, callback) // ipcRenderer.on('ext-result', filter by type)
+panelBridge.sendCmd(type, payload)    // ipcRenderer.send('ext-cmd', {type, payload})
+panelBridge.onResult(type, callback)  // ipcRenderer.on('ext-result', filter by type)
 ```
 
 ### Routing w `electron.js`
 ```javascript
+let controlPanelWin = null;
+let lastFocusedDrawioWin = null;
+
+// Śledź aktywne okno draw.io
+app.on('browser-window-focus', (e, win) => {
+  if (win !== controlPanelWin) lastFocusedDrawioWin = win;
+});
+
 ipcMain.on('ext-cmd', (e, msg) => {
+  const target = lastFocusedDrawioWin;
+  if (!target || target.isDestroyed()) return;
+
   if (msg.type === 'export') {
-    // pokaż folder picker → dołącz folder do payload → wyślij do mainWindow
+    // Folder pochodzi z panelu (msg.payload.folder) — brak dialogu
+    target.webContents.send('ext-cmd', msg);
   } else {
-    // highlight-toggle, number → forward bezpośrednio
-    mainWindow.webContents.send('ext-cmd', msg);
+    target.webContents.send('ext-cmd', msg);
+  }
+});
+
+// Forwarding ext-result z renderera do panelu
+ipcMain.on('ext-result', (e, msg) => {
+  if (controlPanelWin && !controlPanelWin.isDestroyed()) {
+    controlPanelWin.webContents.send('ext-result', msg);
   }
 });
 ```
@@ -121,23 +159,45 @@ ipcMain.on('ext-cmd', (e, msg) => {
 `drawio/src/main/webapp/js/extensions/numbering.js`
 
 ### Wyzwalanie
-`ext-cmd {type: 'number'}` → uruchamia algorytm → modyfikuje model lokalnie, brak odpowiedzi IPC.
+`ext-cmd {type: 'number'}` → uruchamia algorytm na wszystkich stronach → wysyła postęp i wynik przez `ext-result`.
+
+### Zakres — wszystkie strony, licznik ciągły
+- Numerujemy wszystkie strony diagramu w kolejności zakładek (lewa → prawa)
+- Licznik globalny ciągnie się przez strony (strona 1: 1–5, strona 2: 6–12 itd.)
+- Bieżąca strona na końcu pozostaje aktywna
+
+### Dostęp do modelu strony
+Preferowane: bezpośredni dostęp do `ui.pages[i].graph` bez wywołania `ui.selectPage`.  
+Fallback (jeśli API nie pozwala): `ui.selectPage(page)` + numerowanie + powrót do strony startowej.  
+Implementer weryfikuje dostępność API w trakcie implementacji.
+
+### Postęp
+```javascript
+// Przed każdą stroną:
+window.electron.sendMessage('ext-result', {type: 'number-progress', current: i+1, total: pages.length});
+// Po zakończeniu:
+window.electron.sendMessage('ext-result', {type: 'number-done', count: totalNumbered});
+// Brak kwalifikujących węzłów:
+window.electron.sendMessage('ext-result', {type: 'number-status', msg: 'Nie znaleziono elementów do numerowania'});
+```
 
 ### Reguły kwalifikacji węzła
-Węzeł **wchodzi** do zbioru numerowanych jeśli spełnia WSZYSTKIE warunki:
+Węzeł **wchodzi** do zbioru numerowanych jeśli spełnia WSZYSTKIE:
 1. Jest wierzchołkiem (`cell.isVertex() === true`)
 2. Nie jest ramką (`graph.isSwimlane(cell) === false`)
 3. Ma co najmniej jedną krawędź wchodzącą LUB wychodzącą
-4. Posiada child cell z `align=right` ORAZ `verticalAlign=top` w stylu
 
-Warunek 4 decyduje też czy numer zostanie faktycznie wpisany. Węzły bez child cella są **pomijane w numeracji** (numer nie przypisany), ale DFS **przechodzi przez nie dalej** — węzeł jest odwiedzany i nie wraca się do niego ponownie.
+Węzły spełniające 1–3 uczestniczą w DFS. Numer jest przypisywany tylko węzłom które **dodatkowo** mają child cell z `align=right` AND `verticalAlign=top` w stylu. Węzły bez takiego child cella są odwiedzane (nie wracamy do nich), ale nie dostają numeru.
 
-### Węzeł startowy
-Spośród węzłów spełniających warunki 1–3 (pomijamy warunek 4 przy wyborze startu): ten z najmniejszym `geometry.x + geometry.y`. Remis → mniejsze `x`.
+### Węzeł startowy (per podgraf, per strona)
+- Spośród węzłów spełniających warunki 1–3
+- Pozycja **absolutna**: dla węzłów wewnątrz ramki = `frame.geometry.x + node.geometry.x`, analogicznie Y
+- Startowy = min(`absoluteX + absoluteY`), remis → min(`absoluteX`)
+- Wiele rozłącznych podgrafów: każdy dostaje własny start, przetwarzane w kolejności od lewego górnego rogu, licznik globalny
 
 ### Algorytm DFS
 ```
-counter = 1
+counter = 1  (globalny przez strony)
 visited = new Set()
 
 function dfs(node):
@@ -155,80 +215,104 @@ function dfs(node):
     .filter(n → n != null && !visited.has(n) && !graph.isSwimlane(n))
 
   if neighbors.length >= 2:
+    // downstream_length: DFS liczący wszystkie osiągalne nieodwiedzone węzły (1–3), pomija ramki
     neighbors.sort((a, b) => downstreamLength(b, visited) - downstreamLength(a, visited))
-    // remis → kolejność z modelu (indeks w cells)
+    // remis → kolejność z modelu
 
   for each neighbor in neighbors:
     dfs(neighbor)
 ```
 
-**`downstreamLength(node, visited)`** — DFS liczący osiągalne nieodwiedzone węzły. Wywoływany tylko gdy `neighbors.length >= 2` (optymalizacja).
-
 ### Modyfikacja modelu
 ```javascript
 graph.model.beginUpdate();
 try {
-  // wszystkie model.setValue(...)
+  // Najpierw wyczyść istniejące numery (setValue(child, ''))
+  // Potem DFS z przypisywaniem
 } finally {
   graph.model.endUpdate();
 }
 ```
-Pojedyncze Ctrl+Z cofa całe numerowanie.
+- Czyści poprzednie numery przed nowym przebiegiem (nadpisuje od zera)
+- Pojedyncze Ctrl+Z cofa całe numerowanie
+
+### Krawędzie bez targetu
+`edge.target === null` → pomijamy cicho, DFS nie idzie tym kierunkiem.
 
 ---
 
 ## Eksport — 7 formatów
 
 ### Przepływ
-1. Panel → `ext-cmd {type: 'export', formats: [...]}` → main
-2. Main → `dialog.showOpenDialog` (folder picker, JEDEN raz)
-3. Main → renderer: `ext-cmd {type: 'export', formats, folder}`
-4. Renderer (`export-all.js`) → per format: pobiera dane → `sendMessage('ext-result', {type: 'export-data', format, data})`
-5. Main → zapisuje `{nazwa}.{format}` do folderu
+1. Panel → `ext-cmd {type: 'export', formats: [...], folder: '...', allPages: bool, imagesMode: 'perPage'|'current'}`
+2. Main → forward do aktywnego renderera (brak dialogu — folder w payloadzie)
+3. Renderer (`export-all.js`) → per format: pobiera dane → `sendMessage('ext-result', {type: 'export-data', format, data, pageName, pageIndex})`
+4. Main → zapisuje pliki do folderu → `ext-result {type: 'export-done', succeeded: [...], failed: [...]}`
+5. Panel → wyświetla status
 
 ### Pobieranie danych per format (renderer)
 
-| Format | API | Wynik |
-|--------|-----|-------|
-| XML | `ui.getFileData(true)` | string UTF-8 |
-| JSON | konwersja XML → JSON (istniejąca) | string UTF-8 |
-| SVG | `ui.editor.graph.getSvg()` → `new XMLSerializer().serializeToString(svgEl)` | string UTF-8 |
-| PNG | canvas API: `mxUtils.exportToCanvas` → `canvas.toDataURL('image/png')` | base64 (bez prefix) |
-| JPEG | j.w. → `canvas.toDataURL('image/jpeg', 0.9)` | base64 (bez prefix) |
-| PDF | `webContents.printToPDF({})` w main, bez angażowania renderera | Buffer |
-| HTML | `ui.downloadFile('html')` — natywny dialog (nie do folderu zbiorczego) | — |
+| Format | API | Wynik | allPages |
+|--------|-----|-------|---------|
+| XML | `ui.getFileData(true)` | string UTF-8 | wszystkie strony w jednym pliku |
+| JSON | konwersja XML → JSON | string UTF-8 | wszystkie strony w jednym pliku |
+| SVG | `graph.getSvg()` → `XMLSerializer.serializeToString()` | string UTF-8 | wg `imagesMode` |
+| PNG | canvas API → `toDataURL('image/png')` (bez prefix) | base64 | wg `imagesMode` |
+| JPEG | canvas API → `toDataURL('image/jpeg', 0.9)` (bez prefix) | base64 | wg `imagesMode` |
+| PDF | `ui.downloadFile('pdf')` | natywny dialog draw.io | osobny dialog |
+| HTML | `ui.downloadFile('html')` | natywny dialog draw.io | osobny dialog |
 
-**HTML jako wyjątek:** w tej iteracji HTML używa natywnego dialogu draw.io zamiast eksportu do folderu. Pozostałe 6 formatów trafia do wybranego folderu.
+**PDF i HTML** — wyjątki: otwierają natywny dialog draw.io (nie do folderu zbiorczego). Jeśli zaznaczone w checkboxach, otwierają się po eksporcie pozostałych formatów.
 
-### Zapis w main (electron.js)
+### Nazewnictwo plików
+
+| Sytuacja | Nazwa |
+|----------|-------|
+| Jeden plik (XML, JSON) | `{nazwaDiagramu}.xml` |
+| Obraz, jedna strona | `{nazwaDiagramu}.png` |
+| Obraz, wszystkie strony (perPage) | `{nazwaDiagramu}-1.png`, `{nazwaDiagramu}-2.png` |
+| Niezapisany diagram | fallback: `diagram` |
+
+### Zapis w main
 - `fsProm.writeFile(path.join(folder, name + '.' + format), data, encoding)`
 - PNG/JPEG: `encoding = 'base64'`
 - Reszta: `encoding = 'utf8'`
-- PDF: `fsProm.writeFile(..., pdfBuffer)` (Buffer z `printToPDF`)
-- Błąd zapisu → `dialog.showErrorBox`
+- Błąd zapisu → kontynuuj pozostałe, dodaj do listy `failed`
 
-### Integracja z istniejącym kodem
-Istniejący `exportAllFn` (Ctrl+Shift+E) pozostaje bez zmian — działa równolegle. Nowy eksport z panelu używa tego samego `export-all.js`, ale przez `ext-cmd` zamiast `exportAllToFolder`.
+### Integracja
+Istniejący `exportAllFn` (Ctrl+Shift+E) pozostaje bez zmian. Nowy eksport z panelu dodaje handler `ext-cmd {type: 'export'}` obok istniejącego `exportAllToFolder`.
 
 ---
 
 ## Modyfikacje istniejących rozszerzeń
 
 ### `highlight-selection.js`
-Dodanie handlera `ext-cmd`:
 ```javascript
+var highlightEnabled = true;  // domyślnie włączone
+
+// Na starcie: odczyt stanu z localStorage NIE jest tu potrzebny
+// — panel jest źródłem prawdy, wysyła stan przy każdej zmianie
+
 window.electron.registerMsgListener('ext-cmd', function(msg) {
   if (msg.type !== 'highlight-toggle') return;
   highlightEnabled = msg.value;
   if (!highlightEnabled) clearHighlights();
 });
+
+// onSelectionChange sprawdza highlightEnabled przed działaniem
+function onSelectionChange() {
+  if (!highlightEnabled) return;
+  // ... istniejąca logika
+}
 ```
-Nowa zmienna `var highlightEnabled = true` — `onSelectionChange` sprawdza ją przed działaniem.
+
+**Przy starcie aplikacji:** highlight zawsze włączony domyślnie. Panel przy otwarciu odczytuje własny localStorage i jeśli zapisany stan = wyłączony, wysyła `ext-cmd {type: 'highlight-toggle', value: false}`.
 
 ### `export-all.js`
-- Dodanie handlera `ext-cmd {type: 'export'}` obok istniejącego `exportAllToFolder`
 - Nowe funkcje: `getSvgString(ui)`, `getPngBase64(ui)`, `getJpegBase64(ui)`
+- Nowy handler: `ext-cmd {type: 'export'}` → obsługuje 7 formatów
 - Istniejące funkcje: `getXmlString`, `getDiagramName`, `xmlNodeToJson` — bez zmian
+- Istniejący handler `exportAllToFolder` — bez zmian
 
 ---
 
@@ -236,19 +320,27 @@ Nowa zmienna `var highlightEnabled = true` — `onSelectionChange` sprawdza ją 
 
 | Co | Jak |
 |----|-----|
-| `xmlNodeToJson` | istniejące testy (src/test/export-all.test.js) — bez zmian |
-| Algorytm numerowania | nowy plik `src/test/numbering.test.js` — testy jednostkowe na mock graph: liniowa ścieżka, rozwidlenie (dłuższa gałąź pierwsza), cykl, węzły bez child cella, izolowane węzły |
-| Panel + IPC | test manualny (wymaga uruchomienia app) |
-| Eksport 7 formatów | test manualny: każdy format osobno |
+| `xmlNodeToJson` | istniejące (src/test/export-all.test.js) — bez zmian |
+| Algorytm numerowania | `src/test/numbering.test.js` — mock graph: liniowa ścieżka, rozwidlenie (dłuższa gałąź pierwsza), cykl, węzły bez child cella, izolowane węzły, wiele podgrafów, krawędź bez targetu |
+| Panel + IPC | test manualny |
+| Eksport 7 formatów | test manualny (każdy format osobno) |
 
 ---
 
-## Ograniczenia i decyzje
+## Decyzje projektowe
 
 | Decyzja | Uzasadnienie |
 |---------|-------------|
-| HTML eksportuje natywnym dialogiem | Przechwycenie HTML stringa z `downloadFile` wymaga hooków; odłożone na później |
-| `downstream_length` tylko przy rozwidleniu | Optymalizacja — brak kosztownego BFS dla węzłów bez rozwidlenia |
-| Ramki zawsze pomijane (`isSwimlane`) | Ramki są kontenerami, nie elementami przepływu |
-| Węzły bez child cell top-right pomijane w numeracji, ale odwiedzane | DFS nie zatrzymuje się — tylko nie przypisuje numeru |
-| Ctrl+Z cofa całe numerowanie jedną operacją | `beginUpdate/endUpdate` grupuje wszystkie setValue |
+| Nadpisuje numery od zera bez pytania | Prosto i przewidywalnie |
+| Wiele podgrafów — wszystkie numerowane, licznik globalny | Użytkownik może mieć wiele przepływów na stronie |
+| Wszystkie strony, licznik ciągły przez strony | Numery unikalne w całym dokumencie |
+| Pozycja absolutna (offset ramki + węzła) | Węzły w przesuniętych ramkach mogłyby błędnie wygrać jako startowe |
+| Strony w kolejności zakładek | Naturalny porządek czytania |
+| Panel zamyka się z ostatnim oknem | Domyślne zachowanie Electron `app.quit()` |
+| HTML i PDF — natywny dialog (wyjątek) | Ich pipeline renderowania nie daje stringa do przechwycenia |
+| Ramki zawsze pomijane (`isSwimlane`) | Są kontenerami, nie elementami przepływu |
+| Węzły bez child cell odwiedzane, ale nie numerowane | DFS nie zatrzymuje się na nich |
+| Ctrl+Z cofa całe numerowanie | `beginUpdate/endUpdate` grupuje setValue |
+| localStorage panelu = źródło prawdy dla highlight | Tylko panel kontroluje ten stan |
+| Eksport kontynuuje przy błędzie formatu | Użytkownik dostaje maksimum z możliwego |
+| Postęp numerowania per strona | Widoczny w status text podczas operacji |
