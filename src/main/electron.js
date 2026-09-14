@@ -294,6 +294,42 @@ const __DEV__ = process.env.DRAWIO_ENV === 'dev'
 let windowsRegistry = []
 let controlPanelWin = null;
 let lastFocusedDrawioWin = null;
+
+function openControlPanel()
+{
+	if (controlPanelWin && !controlPanelWin.isDestroyed())
+	{
+		controlPanelWin.focus();
+		return;
+	}
+
+	controlPanelWin = new BrowserWindow(
+	{
+		width: 280,
+		height: 420,
+		resizable: false,
+		title: 'Panel rozszerzeń',
+		webPreferences:
+		{
+			preload: path.join(__dirname, 'control-panel-preload.js'),
+			contextIsolation: true,
+			nodeIntegration: false
+		}
+	});
+
+	controlPanelWin.loadFile(path.join(__dirname, 'control-panel.html'));
+
+	if (__DEV__)
+	{
+		controlPanelWin.webContents.openDevTools({mode: 'detach'});
+	}
+
+	controlPanelWin.on('closed', () =>
+	{
+		controlPanelWin = null;
+	});
+}
+
 let cmdQPressed = false
 let firstWinLoaded = false
 let firstWinFilePath = null
@@ -862,6 +898,13 @@ function createWindow (opt = {})
 		{
 			event.preventDefault();
 			exportAllFn(mainWindow);
+		}
+
+		if (input.type === 'keyDown' && input.key === 'P' &&
+			input.shift && (isMac ? input.meta : input.control) && !input.alt)
+		{
+			event.preventDefault();
+			openControlPanel();
 		}
 	});
 
@@ -2130,6 +2173,15 @@ app.whenReady().then(() =>
 	        },
 	        { type: 'separator' },
 	        { role: 'close' }
+	      ]
+	    }, {
+	      label: 'Rozszerzenia',
+	      submenu: [
+	        {
+	          label: 'Panel rozszerzeń',
+	          accelerator: 'CmdOrCtrl+Shift+P',
+	          click() { openControlPanel(); }
+	        }
 	      ]
 	    }, {
 	      label: 'Edit',

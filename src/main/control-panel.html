@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Panel rozszerzeń</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      background: #f0f0f0;
+      color: #333;
+      user-select: none;
+    }
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px 6px;
+      background: #e0e0e0;
+      border-bottom: 1px solid #ccc;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .section { border-bottom: 1px solid #ccc; padding: 10px 12px; }
+    .section:last-child { border-bottom: none; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .row:last-child { margin-bottom: 0; }
+    .label { font-size: 13px; }
+    button {
+      padding: 4px 12px;
+      font-size: 12px;
+      border: 1px solid #aaa;
+      border-radius: 3px;
+      background: #fff;
+      cursor: pointer;
+    }
+    button:hover { background: #e8e8e8; }
+    button:active { background: #d0d0d0; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    /* Toggle */
+    .toggle-btn {
+      width: 100px;
+      text-align: center;
+      font-weight: 500;
+    }
+    .toggle-btn.on { background: #4caf50; color: #fff; border-color: #388e3c; }
+    .toggle-btn.on:hover { background: #43a047; }
+    .toggle-btn.off { background: #f44336; color: #fff; border-color: #c62828; }
+    .toggle-btn.off:hover { background: #e53935; }
+    /* Folder */
+    .folder-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .folder-input {
+      flex: 1;
+      padding: 4px 6px;
+      font-size: 12px;
+      border: 1px solid #aaa;
+      border-radius: 3px;
+    }
+    /* Checkboxes */
+    .formats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px 8px;
+      margin-bottom: 8px;
+    }
+    .formats-grid label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .all-pages-row { margin-bottom: 6px; }
+    .all-pages-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .images-mode { margin-left: 20px; display: none; font-size: 12px; color: #555; }
+    .images-mode.visible { display: block; }
+    .images-mode label { display: flex; align-items: center; gap: 4px; cursor: pointer; margin-bottom: 2px; }
+    /* Status */
+    .status {
+      font-size: 11px;
+      color: #666;
+      margin-top: 6px;
+      min-height: 16px;
+    }
+    .status.error { color: #c62828; }
+    .status.success { color: #2e7d32; }
+  </style>
+</head>
+<body>
+  <h2>Panel rozszerzeń</h2>
+
+  <!-- Highlight -->
+  <div class="section">
+    <div class="row">
+      <span class="label">Podświetlenie zaznaczenia</span>
+      <button id="highlightToggle" class="toggle-btn on">Włączone</button>
+    </div>
+  </div>
+
+  <!-- Numerowanie -->
+  <div class="section">
+    <div class="row">
+      <span class="label">Numerowanie elementów</span>
+      <button id="numberBtn">Numeruj</button>
+    </div>
+    <div class="status" id="numberStatus"></div>
+  </div>
+
+  <!-- Eksport -->
+  <div class="section">
+    <div class="label" style="margin-bottom:8px;font-weight:600;">Eksportuj...</div>
+    <div class="folder-row">
+      <input type="text" id="folderInput" class="folder-input" placeholder="Ścieżka folderu..." />
+      <button id="browseBtn">...</button>
+    </div>
+    <div class="formats-grid">
+      <label><input type="checkbox" id="fmt-xml" value="xml" checked> XML</label>
+      <label><input type="checkbox" id="fmt-json" value="json" checked> JSON</label>
+      <label><input type="checkbox" id="fmt-pdf" value="pdf"> PDF</label>
+      <label><input type="checkbox" id="fmt-svg" value="svg"> SVG</label>
+      <label><input type="checkbox" id="fmt-png" value="png"> PNG</label>
+      <label><input type="checkbox" id="fmt-jpeg" value="jpeg"> JPEG</label>
+      <label><input type="checkbox" id="fmt-html" value="html"> HTML</label>
+    </div>
+    <div class="all-pages-row">
+      <label><input type="checkbox" id="allPages"> Wszystkie strony</label>
+    </div>
+    <div class="images-mode" id="imagesMode">
+      <label><input type="radio" name="imagesMode" value="perPage" checked> Per strona</label>
+      <label><input type="radio" name="imagesMode" value="current"> Tylko bieżąca</label>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <div></div>
+      <button id="exportBtn">Eksportuj</button>
+    </div>
+    <div class="status" id="exportStatus"></div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>
