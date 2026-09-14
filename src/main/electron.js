@@ -154,6 +154,92 @@ function safeUpdaterListener(label, fn)
 	};
 }
 
+async function exportAllFn(win)
+{
+	if (!win || !win.webContents) return;
+
+	let msgResult;
+
+	try
+	{
+		msgResult = await dialog.showMessageBox(win,
+		{
+			type: 'question',
+			buttons: ['Anuluj', 'Eksportuj'],
+			defaultId: 1,
+			cancelId: 0,
+			title: 'Eksportuj wszystko',
+			message: 'Eksport do PDF, XML i JSON',
+			checkboxLabel: 'Eksportuj wszystkie strony',
+			checkboxChecked: false
+		});
+	}
+	catch (e)
+	{
+		return;
+	}
+
+	if (msgResult.response === 0) return;
+
+	const allPages = msgResult.checkboxChecked;
+
+	let folderResult;
+
+	try
+	{
+		folderResult = await dialog.showOpenDialog(win,
+		{
+			title: 'Wybierz folder eksportu',
+			properties: ['openDirectory', 'createDirectory']
+		});
+	}
+	catch (e)
+	{
+		return;
+	}
+
+	if (folderResult.canceled || !folderResult.filePaths[0]) return;
+
+	const folderPath = folderResult.filePaths[0];
+
+	ipcMain.once('exportAll-xml-ready', async (e, data) =>
+	{
+		const xmlPath = path.join(folderPath, (data.name || 'diagram') + '.xml');
+
+		try
+		{
+			await fsProm.writeFile(xmlPath, data.xml, 'utf8');
+		}
+		catch (err)
+		{
+			dialog.showErrorBox('Błąd eksportu XML', err.message);
+		}
+	});
+
+	ipcMain.once('exportAll-json-ready', async (e, data) =>
+	{
+		const jsonPath = path.join(folderPath, (data.name || 'diagram') + '.json');
+
+		try
+		{
+			await fsProm.writeFile(jsonPath, data.json, 'utf8');
+		}
+		catch (err)
+		{
+			dialog.showErrorBox('Błąd eksportu JSON', err.message);
+		}
+	});
+
+	ipcMain.once('exportAll-error', (e, data) =>
+	{
+		ipcMain.removeAllListeners('exportAll-xml-ready');
+		ipcMain.removeAllListeners('exportAll-json-ready');
+		dialog.showErrorBox('Błąd eksportu', data.msg || 'Nieznany błąd');
+	});
+
+	win.webContents.send('exportAllToFolder', { folderPath, allPages });
+}
+
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 //Command option to disable hardware acceleration
@@ -750,6 +836,13 @@ function createWindow (opt = {})
 		{
 			event.preventDefault();
 			mainWindow.webContents.pasteAndMatchStyle();
+		}
+
+		if (input.type === 'keyDown' && input.key === 'E' &&
+			input.shift && (isMac ? input.meta : input.control) && !input.alt)
+		{
+			event.preventDefault();
+			exportAllFn(mainWindow);
 		}
 	});
 
@@ -1905,6 +1998,16 @@ app.whenReady().then(() =>
 	    }, {
 	      label: 'File',
 	      submenu: [
+	        {
+	          label: 'Eksportuj wszystko (PDF + XML + JSON)',
+	          accelerator: 'CmdOrCtrl+Shift+E',
+	          click()
+	          {
+	            const win = BrowserWindow.getFocusedWindow();
+	            if (win) exportAllFn(win);
+	          }
+	        },
+	        { type: 'separator' },
 	        { role: 'close' }
 	      ]
 	    }, {
