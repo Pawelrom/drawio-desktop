@@ -12,5 +12,9 @@ contextBridge.exposeInMainWorld('panelBridge',
 		{
 			if (msg && msg.type === type) callback(msg);
 		});
+	},
+	browseFolder: function ()
+	{
+		return ipcRenderer.invoke('browse-folder');
 	}
 });

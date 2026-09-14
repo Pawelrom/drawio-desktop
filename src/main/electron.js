@@ -1187,6 +1187,17 @@ app.whenReady().then(() =>
 		}
 	});
 
+	ipcMain.handle('browse-folder', async () =>
+	{
+		const result = await dialog.showOpenDialog(
+		{
+			title: 'Wybierz folder eksportu',
+			properties: ['openDirectory', 'createDirectory']
+		});
+		if (result.canceled || !result.filePaths[0]) return null;
+		return result.filePaths[0];
+	});
+
 	// ext-result: renderer → main → panel
 	ipcMain.on('ext-result', async (e, msg) =>
 	{
