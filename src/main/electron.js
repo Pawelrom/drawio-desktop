@@ -1095,6 +1095,10 @@ app.whenReady().then(() =>
 		e.sender.openDevTools();
 	})
 
+	let pendingExportFolder = null;
+	let pendingExportSucceeded = [];
+	let pendingExportFailed = [];
+
 	// ext-cmd: panel → main → active draw.io renderer
 	ipcMain.on('ext-cmd', (e, msg) =>
 	{
@@ -1129,6 +1133,9 @@ app.whenReady().then(() =>
 				return;
 			}
 
+			pendingExportFolder = folder;
+			pendingExportSucceeded = [];
+			pendingExportFailed = [];
 			target.webContents.send('ext-cmd', msg);
 		}
 		else
@@ -1138,9 +1145,45 @@ app.whenReady().then(() =>
 	});
 
 	// ext-result: renderer → main → panel
-	ipcMain.on('ext-result', (e, msg) =>
+	ipcMain.on('ext-result', async (e, msg) =>
 	{
-		if (!msg || msg.type === 'export-data') return; // obsługiwane osobno w Task 5
+		if (!msg) return;
+
+		if (msg.type === 'export-data')
+		{
+			if (!pendingExportFolder) return;
+			const filePath = path.join(pendingExportFolder, msg.filename);
+			try
+			{
+				await fsProm.writeFile(filePath, msg.data, msg.encoding);
+				pendingExportSucceeded.push(msg.format.toUpperCase());
+			}
+			catch (err)
+			{
+				pendingExportFailed.push(msg.format.toUpperCase());
+			}
+			return;
+		}
+
+		if (msg.type === 'export-complete')
+		{
+			const folder = pendingExportFolder;
+			const succeeded = pendingExportSucceeded.slice();
+			const failed = pendingExportFailed.slice();
+			pendingExportFolder = null;
+			pendingExportSucceeded = [];
+			pendingExportFailed = [];
+
+			if (controlPanelWin && !controlPanelWin.isDestroyed())
+			{
+				controlPanelWin.webContents.send('ext-result',
+					{type: 'export-summary', folder: folder,
+					 succeeded: succeeded, failed: failed});
+			}
+			return;
+		}
+
+		// Pozostale typy (number-progress, number-done, number-status itp.)
 		if (controlPanelWin && !controlPanelWin.isDestroyed())
 		{
 			controlPanelWin.webContents.send('ext-result', msg);
