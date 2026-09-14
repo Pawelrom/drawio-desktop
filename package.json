@@ -51,6 +51,7 @@
     "dotenv": "^17.4.2",
     "electron": "^44.2.0",
     "electron-builder": "^26.15.7",
+    "jsdom": "^29.1.1",
     "quicklookjs": "^1.0.1",
     "sumchecker": "^3.0.1"
   }
