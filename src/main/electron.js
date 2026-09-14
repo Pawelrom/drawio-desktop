@@ -202,6 +202,17 @@ async function exportAllFn(win)
 
 	const folderPath = folderResult.filePaths[0];
 
+	var xmlReceived = false;
+	var jsonReceived = false;
+
+	function checkAndCleanup()
+	{
+		if (xmlReceived && jsonReceived)
+		{
+			ipcMain.removeAllListeners('exportAll-error');
+		}
+	}
+
 	ipcMain.once('exportAll-xml-ready', async (e, data) =>
 	{
 		const xmlPath = path.join(folderPath, (data.name || 'diagram') + '.xml');
@@ -214,6 +225,9 @@ async function exportAllFn(win)
 		{
 			dialog.showErrorBox('Błąd eksportu XML', err.message);
 		}
+
+		xmlReceived = true;
+		checkAndCleanup();
 	});
 
 	ipcMain.once('exportAll-json-ready', async (e, data) =>
@@ -228,6 +242,9 @@ async function exportAllFn(win)
 		{
 			dialog.showErrorBox('Błąd eksportu JSON', err.message);
 		}
+
+		jsonReceived = true;
+		checkAndCleanup();
 	});
 
 	ipcMain.once('exportAll-error', (e, data) =>
