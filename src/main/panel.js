@@ -73,7 +73,7 @@ folderInput.value = localStorage.getItem('exportFolder') || '';
 allPagesCheck.checked = localStorage.getItem('exportAllPages') === 'true';
 imagesModeDiv.className = 'images-mode' + (allPagesCheck.checked ? ' visible' : '');
 
-var savedImagesMode = localStorage.getItem('exportImagesMode') || 'perPage';
+var savedImagesMode = localStorage.getItem('exportImagesMode') || 'current';
 var imageModeRadios = document.querySelectorAll('input[name="imagesMode"]');
 imageModeRadios.forEach(function (r) { r.checked = r.value === savedImagesMode; });
 

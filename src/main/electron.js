@@ -1141,6 +1141,7 @@ app.whenReady().then(() =>
 	let pendingExportFolder = null;
 	let pendingExportSucceeded = [];
 	let pendingExportFailed = [];
+	let pendingExportWrites = [];
 
 	// ext-cmd: panel → main → active draw.io renderer
 	ipcMain.on('ext-cmd', (e, msg) =>
@@ -1199,41 +1200,44 @@ app.whenReady().then(() =>
 	});
 
 	// ext-result: renderer → main → panel
-	ipcMain.on('ext-result', async (e, msg) =>
+	ipcMain.on('ext-result', (e, msg) =>
 	{
 		if (!msg) return;
 
 		if (msg.type === 'export-data')
 		{
 			if (!pendingExportFolder) return;
-			const filePath = path.join(pendingExportFolder, msg.filename);
-			try
-			{
-				await fsProm.writeFile(filePath, msg.data, msg.encoding);
-				pendingExportSucceeded.push(msg.format.toUpperCase());
-			}
-			catch (err)
-			{
-				pendingExportFailed.push(msg.format.toUpperCase());
-			}
+			const filePath = path.join(pendingExportFolder, path.basename(msg.filename));
+			const format = msg.format.toUpperCase();
+			const succeeded = pendingExportSucceeded;
+			const failed = pendingExportFailed;
+			const writePromise = fsProm.writeFile(filePath, msg.data, msg.encoding)
+				.then(() => { succeeded.push(format); })
+				.catch(() => { failed.push(format); });
+			pendingExportWrites.push(writePromise);
 			return;
 		}
 
 		if (msg.type === 'export-complete')
 		{
 			const folder = pendingExportFolder;
-			const succeeded = pendingExportSucceeded.slice();
-			const failed = pendingExportFailed.slice();
+			const succeeded = pendingExportSucceeded;
+			const failed = pendingExportFailed;
+			const writes = pendingExportWrites.slice();
 			pendingExportFolder = null;
 			pendingExportSucceeded = [];
 			pendingExportFailed = [];
+			pendingExportWrites = [];
 
-			if (controlPanelWin && !controlPanelWin.isDestroyed())
+			Promise.all(writes).then(() =>
 			{
-				controlPanelWin.webContents.send('ext-result',
-					{type: 'export-summary', folder: folder,
-					 succeeded: succeeded, failed: failed});
-			}
+				if (controlPanelWin && !controlPanelWin.isDestroyed())
+				{
+					controlPanelWin.webContents.send('ext-result',
+						{type: 'export-summary', folder: folder,
+						 succeeded: succeeded, failed: failed});
+				}
+			});
 			return;
 		}
 
